@@ -28,6 +28,12 @@ const refValue = '.value';
 /** Every name language-core generates, such as `__VLS_export`. */
 const generatedNames = new Set<string>(Object.values(names));
 
+/**
+ * The code block that holds the original SFC. ESLint lints a block with the same text and extension
+ * as its file under the file's own config, so the `**\/*.vue` config applies to this block.
+ */
+const sfcBlockFilename = 'original.vue';
+
 let mapper: ContentMapper | undefined;
 const files = new Map<string, FileState>();
 
@@ -55,19 +61,25 @@ export const processor: Linter.Processor = {
       virtualLines: new LineIndex(result.text),
       sourceMap: new SourceMap(result.mappings),
     });
-    return [{ text: result.text, filename: `0${result.extension}` }];
+    return [
+      { text: result.text, filename: `0${result.extension}` },
+      // The original SFC, for rules that lint it as a whole, such as eslint-plugin-vue's.
+      { text, filename: sfcBlockFilename },
+    ];
   },
 
   postprocess(messageLists, filename) {
     const file = files.get(filename);
     files.delete(filename);
+    const [virtualMessages = [], sfcMessages = []] = messageLists;
     if (!file) {
       return messageLists.flat();
     }
 
     const seen = new Set<string>();
-    const messages: Linter.LintMessage[] = [];
-    for (const message of messageLists.flat()) {
+    // The SFC block is the original text, so its locations and fixes need no mapping.
+    const messages: Linter.LintMessage[] = [...sfcMessages];
+    for (const message of virtualMessages) {
       const mapped = mapMessage(file, message);
       if (!mapped) {
         continue;
@@ -85,7 +97,7 @@ export const processor: Linter.Processor = {
         messages.push(mapped);
       }
     }
-    return messages;
+    return messages.sort((a, b) => a.line - b.line || a.column - b.column);
   },
 };
 

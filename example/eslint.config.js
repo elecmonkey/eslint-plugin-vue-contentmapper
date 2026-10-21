@@ -3,6 +3,7 @@ import vueContentMapper from '../dist/index.js';
 
 export default [
   ...vueContentMapper.configs.base,
+  ...vueContentMapper.configs.vue,
   {
     files: ['**/*.vue/*.{js,jsx,ts,tsx}'],
     plugins: { '@typescript-eslint': tseslint.plugin },
