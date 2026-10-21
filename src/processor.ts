@@ -91,7 +91,7 @@ function mapMessage(
   file: FileState,
   message: Linter.LintMessage,
 ): Linter.LintMessage | undefined {
-  const { originalLines, virtualText, virtualLines, sourceMap } = file;
+  const { originalLines, virtualLines, sourceMap } = file;
   const reportStart = virtualLines.toOffset(message.line, message.column);
   const end =
     message.endLine === undefined
@@ -137,14 +137,14 @@ function mapMessage(
   }
 
   if (fix) {
-    const mappedFix = mapFix(virtualText, sourceMap, fix);
+    const mappedFix = mapFix(file, fix);
     if (mappedFix) {
       mapped.fix = mappedFix;
     }
   }
   if (suggestions) {
     const mappedSuggestions = suggestions.flatMap((suggestion) => {
-      const mappedFix = mapFix(virtualText, sourceMap, suggestion.fix);
+      const mappedFix = mapFix(file, suggestion.fix);
       return mappedFix
         ? [{ ...suggestion, desc: cleanText(suggestion.desc), fix: mappedFix }]
         : [];
@@ -278,8 +278,7 @@ function findClosingParen(text: string, offset: number) {
  * `!!`), which is more likely to sit inside a single verbatim mapping.
  */
 function mapFix(
-  virtualText: string,
-  sourceMap: SourceMap,
+  { virtualText, originalText, sourceMap }: FileState,
   fix: Rule.Fix,
 ): Rule.Fix | undefined {
   let [start, end] = fix.range;
@@ -304,6 +303,13 @@ function mapFix(
   start += prefix;
   end -= suffix;
   text = text.slice(prefix, text.length - suffix);
+
+  // A rule may copy generated code, such as `__VLS_ctx.foo`, into a replacement for user code.
+  for (const name of generatedNames) {
+    if (text.includes(name) && !originalText.includes(name)) {
+      return undefined;
+    }
+  }
 
   const range = sourceMap.toOriginalFixRange(start, end);
   return range ? { range, text } : undefined;

@@ -2,6 +2,7 @@ import { ESLint, type Linter } from 'eslint';
 import * as path from 'node:path';
 import { expect, test } from 'rstack/test';
 import vueContentMapper from '../src/index';
+import { processor } from '../src/processor';
 
 const fixtures = path.join(import.meta.dirname, 'fixtures');
 
@@ -215,4 +216,29 @@ const a = ;
   const result = await lint(code, {});
   expect(result.messages).toHaveLength(1);
   expect(result.messages[0]).toMatchObject({ fatal: true, line: 2 });
+});
+
+test('drops fixes that would insert generated code', () => {
+  const code = `<script setup lang="ts">
+const x = 1;
+</script>
+`;
+  const filePath = path.join(fixtures, 'App.vue');
+  const fixFor = (text: string) => {
+    const [block] = processor.preprocess!(code, filePath) as { text: string }[];
+    const offset = block!.text.indexOf('1;');
+    const before = block!.text.slice(0, offset).split('\n');
+    const message: Linter.LintMessage = {
+      ruleId: 'test',
+      message: 'test',
+      severity: 2,
+      line: before.length,
+      column: before.at(-1)!.length + 1,
+      fix: { range: [offset, offset + 1], text },
+    };
+    const [mapped] = processor.postprocess!([[message]], filePath);
+    return mapped!.fix;
+  };
+  expect(fixFor('2')).toEqual({ range: [35, 36], text: '2' });
+  expect(fixFor('__VLS_ctx.foo')).toBeUndefined();
 });
