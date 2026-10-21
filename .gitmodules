@@ -1,0 +1,4 @@
+[submodule "language-tools"]
+	path = vue-language-tools
+	url = https://github.com/vuejs/language-tools.git
+	branch = feat/vue-content-mapper

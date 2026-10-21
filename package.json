@@ -1,0 +1,39 @@
+{
+  "name": "eslint-plugin-vue-contentmapper",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rs lib",
+    "check": "rs check --type-check",
+    "postinstall": "cd vue-language-tools && corepack pnpm install --frozen-lockfile",
+    "lint:example": "eslint --config example/eslint.config.js example",
+    "test": "rs test"
+  },
+  "dependencies": {
+    "@typescript-eslint/parser": "8.72.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@vue/content-mapper": "link:./vue-language-tools/packages/content-mapper",
+    "eslint": "10.13.0",
+    "rstack": "0.8.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vue": "3.5.44"
+  },
+  "peerDependencies": {
+    "eslint": "^9.0.0 || ^10.0.0",
+    "typescript": ">=5.0.0 <6.1.0"
+  }
+}
