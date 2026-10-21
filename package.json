@@ -16,6 +16,10 @@
   "scripts": {
     "build": "rs lib",
     "check": "rs check --type-check",
+    "corpus:collect": "node scripts/corpus/collect.ts",
+    "corpus:diff": "rs lib && node scripts/corpus/diff.ts",
+    "corpus:scan": "rs lib && node scripts/corpus/scan.ts",
+    "corpus:setup": "cd eslint-plugin-vue && npm install",
     "postinstall": "cd vue-language-tools && corepack pnpm install --frozen-lockfile",
     "lint:example": "eslint --config example/eslint.config.js example",
     "test": "rs test"

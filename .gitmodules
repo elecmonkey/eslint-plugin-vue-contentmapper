@@ -2,3 +2,6 @@
 	path = vue-language-tools
 	url = https://github.com/vuejs/language-tools.git
 	branch = feat/vue-content-mapper
+[submodule "eslint-plugin-vue"]
+	path = eslint-plugin-vue
+	url = https://github.com/vuejs/eslint-plugin-vue.git

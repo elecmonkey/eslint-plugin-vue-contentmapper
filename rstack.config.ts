@@ -15,7 +15,7 @@ define.lib({
 });
 
 define.lint(({ globalIgnores, js, ts }) => [
-  globalIgnores(['vue-language-tools/**']),
+  globalIgnores(['vue-language-tools/**', 'eslint-plugin-vue/**']),
   js.configs.recommended,
   ts.configs.recommendedTypeChecked,
   {
@@ -30,7 +30,7 @@ define.lint(({ globalIgnores, js, ts }) => [
 define.fmt({
   singleQuote: true,
   sortPackageJson: true,
-  ignorePatterns: ['vue-language-tools'],
+  ignorePatterns: ['vue-language-tools', 'eslint-plugin-vue'],
 });
 
 define.test({
