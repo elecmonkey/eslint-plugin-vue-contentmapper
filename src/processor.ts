@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { LineIndex, SourceMap } from './sourceMap';
 
 interface FileState {
+  originalText: string;
   originalLines: LineIndex;
   virtualText: string;
   virtualLines: LineIndex;
@@ -46,6 +47,7 @@ export const processor: Linter.Processor = {
       content: text,
     });
     files.set(filename, {
+      originalText: text,
       originalLines: new LineIndex(text),
       virtualText: result.text,
       virtualLines: new LineIndex(result.text),
@@ -120,9 +122,11 @@ function mapMessage(
   }
 
   const { fix, suggestions, ...rest } = message;
+  const cleanText = createTextCleaner(file, reportStart, end);
   const startPosition = originalLines.toPosition(range[0]);
   const mapped: Linter.LintMessage = {
     ...rest,
+    message: cleanText(message.message),
     line: startPosition.line,
     column: startPosition.column,
   };
@@ -141,7 +145,9 @@ function mapMessage(
   if (suggestions) {
     const mappedSuggestions = suggestions.flatMap((suggestion) => {
       const mappedFix = mapFix(virtualText, sourceMap, suggestion.fix);
-      return mappedFix ? [{ ...suggestion, fix: mappedFix }] : [];
+      return mappedFix
+        ? [{ ...suggestion, desc: cleanText(suggestion.desc), fix: mappedFix }]
+        : [];
     });
     if (mappedSuggestions.length) {
       mapped.suggestions = mappedSuggestions;
@@ -150,36 +156,88 @@ function mapMessage(
   return mapped;
 }
 
+interface IdentifierWrapper {
+  /** Offset of the wrapped identifier, right after the prefix. */
+  identifierStart: number;
+  identifierEnd: number;
+  /** Offset after the whole wrapper, e.g. after the `)` of `__VLS_unwrap(foo, …)`. */
+  wrapperEnd: number;
+}
+
 /**
- * Moves a report start that sits on an unmapped identifier prefix to the identifier after it, when
- * the report covers more than the generated wrapper (`__VLS_ctx.foo`, `__VLS_unwrap(foo, …)`). A
- * report on the wrapper itself has no counterpart in the original and stays dropped. Text the user
- * wrote is always mapped, so a prefix spelled out in a string literal never matches.
+ * The generated wrapper around a template identifier starting at `offset`, if any:
+ * `__VLS_ctx.foo` or `__VLS_unwrap(foo, …)`, with an unmapped prefix and a mapped identifier.
+ * Text the user wrote is always mapped, so a prefix spelled out in a string literal never matches.
  */
-function skipIdentifierPrefix(
+function identifierWrapperAt(
   { virtualText, sourceMap }: FileState,
-  start: number,
-  end: number,
-) {
-  if (sourceMap.mappingAt(start)) {
-    return start;
+  offset: number,
+): IdentifierWrapper | undefined {
+  if (sourceMap.mappingAt(offset)) {
+    return undefined;
   }
   for (const prefix of identifierPrefixes) {
-    if (!virtualText.startsWith(prefix, start)) {
+    if (!virtualText.startsWith(prefix, offset)) {
       continue;
     }
-    const identifier = sourceMap.mappingAt(start + prefix.length);
+    const identifier = sourceMap.mappingAt(offset + prefix.length);
     if (!identifier) {
       continue;
     }
-    const wrapperEnd = prefix.endsWith('(')
-      ? findClosingParen(virtualText, start + prefix.length)
-      : identifier.generatedEnd;
-    if (end > wrapperEnd) {
-      return start + prefix.length;
+    return {
+      identifierStart: offset + prefix.length,
+      identifierEnd: identifier.generatedEnd,
+      wrapperEnd: prefix.endsWith('(')
+        ? findClosingParen(virtualText, offset + prefix.length)
+        : identifier.generatedEnd,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Moves a report start that sits on an identifier wrapper to the identifier, when the report covers
+ * more than the wrapper. A report on the wrapper itself has no counterpart in the original and
+ * stays dropped.
+ */
+function skipIdentifierPrefix(file: FileState, start: number, end: number) {
+  const wrapper = identifierWrapperAt(file, start);
+  return wrapper && end > wrapper.wrapperEnd ? wrapper.identifierStart : start;
+}
+
+/**
+ * Rules quote the code they report on, so messages on template expressions can read
+ * ``Use `Boolean(__VLS_ctx.foo)` instead``. Replaces each identifier wrapper in the report's range
+ * with the identifier, unless the original file contains the same text.
+ */
+function createTextCleaner(file: FileState, start: number, end: number) {
+  const { virtualText, originalText } = file;
+  const replacements = new Map<string, string>();
+  for (const prefix of identifierPrefixes) {
+    for (
+      let offset = virtualText.indexOf(prefix, start);
+      offset !== -1 && offset < end;
+      offset = virtualText.indexOf(prefix, offset + 1)
+    ) {
+      const wrapper = identifierWrapperAt(file, offset);
+      if (!wrapper) {
+        continue;
+      }
+      const generated = virtualText.slice(offset, wrapper.wrapperEnd);
+      if (!originalText.includes(generated)) {
+        replacements.set(
+          generated,
+          virtualText.slice(wrapper.identifierStart, wrapper.identifierEnd),
+        );
+      }
     }
   }
-  return start;
+  return (text: string) => {
+    for (const [generated, identifier] of replacements) {
+      text = text.split(generated).join(identifier);
+    }
+    return text;
+  };
 }
 
 /**

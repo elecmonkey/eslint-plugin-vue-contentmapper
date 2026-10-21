@@ -115,6 +115,34 @@ import Bar from './Bar.vue';
   ).toEqual(["3:8 'Bar' is defined but never used."]);
 });
 
+test('removes identifier wrappers from messages', async () => {
+  // `foo` is read as `__VLS_ctx.foo`, `a` as `__VLS_unwrap(a, …)`.
+  const code = `<script setup lang="ts">
+let a = 1;
+</script>
+
+<template>{{ !!foo }}{{ '' + a }}</template>
+`;
+  const result = await lint(code, { 'no-implicit-coercion': 'error' });
+  expect(result.messages.map((m) => m.message)).toEqual([
+    'Unexpected implicit coercion encountered. Use `Boolean(foo)` instead.',
+    'Unexpected implicit coercion encountered. Use `String(a)` instead.',
+  ]);
+});
+
+test('keeps message text that the user wrote', async () => {
+  const code = `<script setup lang="ts">
+const s = '__VLS_ctx.foo';
+</script>
+
+<template>{{ !!foo }}</template>
+`;
+  const result = await lint(code, { 'no-implicit-coercion': 'error' });
+  expect(result.messages.map((m) => m.message)).toEqual([
+    'Unexpected implicit coercion encountered. Use `Boolean(__VLS_ctx.foo)` instead.',
+  ]);
+});
+
 test('keeps reports on user code spelling a generated prefix', async () => {
   const code = `<template>
 	<div>{{ '__VLS_ctx.foo' }}</div>
