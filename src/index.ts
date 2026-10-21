@@ -19,8 +19,8 @@ plugin.configs.base = [
     processor: 'vue-contentmapper/vue',
   },
   {
-    // Virtual blocks are named `<file>.vue/0.ts` or `<file>.vue/0.tsx`.
-    files: ['**/*.vue/*.ts', '**/*.vue/*.tsx'],
+    // Virtual blocks are named `<file>.vue/0.ts`, or `.js` when `<script>` has no `lang`.
+    files: ['**/*.vue/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       parser: tsParser,
     },

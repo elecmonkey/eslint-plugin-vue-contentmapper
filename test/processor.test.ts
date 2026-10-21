@@ -11,7 +11,7 @@ async function lint(code: string, rules: Linter.RulesRecord, fix = false) {
     overrideConfigFile: true,
     overrideConfig: [
       ...vueContentMapper.configs.base,
-      { files: ['**/*.vue/*.ts', '**/*.vue/*.tsx'], rules },
+      { files: ['**/*.vue/*.{js,jsx,ts,tsx}'], rules },
     ],
     fix,
   });
@@ -42,6 +42,16 @@ const count = ref(0);
 test('maps reports in script and template back to the original file', async () => {
   const result = await lint(counter, { eqeqeq: 'error' });
   expect(positions(result)).toEqual(['eqeqeq 8:36-8:38']);
+});
+
+test('lints SFCs whose script has no lang', async () => {
+  // A `<script>` without `lang` produces a `.js` virtual block.
+  const code = `<script setup>
+const props = defineUnknown({ foo: String });
+</script>
+`;
+  const result = await lint(code, { 'no-undef': 'error' });
+  expect(positions(result)).toEqual(['no-undef 2:15-2:28']);
 });
 
 test('drops reports that start in generated code', async () => {

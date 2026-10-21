@@ -13,7 +13,7 @@ import vueContentMapper from 'eslint-plugin-vue-contentmapper';
 export default [
   ...vueContentMapper.configs.base,
   {
-    files: ['**/*.vue/*.ts', '**/*.vue/*.tsx'],
+    files: ['**/*.vue/*.{js,jsx,ts,tsx}'],
     rules: { eqeqeq: 'error' },
   },
 ];
