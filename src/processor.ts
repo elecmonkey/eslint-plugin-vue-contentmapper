@@ -1,4 +1,5 @@
 import { type ContentMapper, createContentMapper } from '@vue/content-mapper';
+import { names } from '@vue/language-core';
 import type { Linter, Rule } from 'eslint';
 import * as path from 'node:path';
 import { LineIndex, SourceMap } from './sourceMap';
@@ -9,6 +10,17 @@ interface FileState {
   virtualLines: LineIndex;
   sourceMap: SourceMap;
 }
+
+/**
+ * Code that language-core generates in front of a template identifier: `__VLS_ctx.foo`,
+ * `__VLS_dollars.$attrs`, `__VLS_unwrap(foo, …)`. It has no mapping, so a report on the whole
+ * expression would otherwise start in generated code and be dropped.
+ */
+const identifierPrefixes = [
+  `${names.ctx}.`,
+  `${names.dollars}.`,
+  `${names.unwrap}(`,
+];
 
 let mapper: ContentMapper | undefined;
 const files = new Map<string, FileState>();
@@ -75,14 +87,15 @@ function mapMessage(
   message: Linter.LintMessage,
 ): Linter.LintMessage | undefined {
   const { originalLines, virtualText, virtualLines, sourceMap } = file;
-  const start = virtualLines.toOffset(message.line, message.column);
+  const reportStart = virtualLines.toOffset(message.line, message.column);
   const end =
     message.endLine === undefined
-      ? start
+      ? reportStart
       : virtualLines.toOffset(
           message.endLine,
           message.endColumn ?? message.column,
         );
+  const start = skipIdentifierPrefix(file, reportStart, end);
   const range = sourceMap.toOriginalRange(start, end);
 
   if (!range) {
@@ -129,6 +142,51 @@ function mapMessage(
     }
   }
   return mapped;
+}
+
+/**
+ * Moves a report start that sits on an unmapped identifier prefix to the identifier after it, when
+ * the report covers more than the generated wrapper (`__VLS_ctx.foo`, `__VLS_unwrap(foo, …)`). A
+ * report on the wrapper itself has no counterpart in the original and stays dropped. Text the user
+ * wrote is always mapped, so a prefix spelled out in a string literal never matches.
+ */
+function skipIdentifierPrefix(
+  { virtualText, sourceMap }: FileState,
+  start: number,
+  end: number,
+) {
+  if (sourceMap.mappingAt(start)) {
+    return start;
+  }
+  for (const prefix of identifierPrefixes) {
+    if (!virtualText.startsWith(prefix, start)) {
+      continue;
+    }
+    const identifier = sourceMap.mappingAt(start + prefix.length);
+    if (!identifier) {
+      continue;
+    }
+    const wrapperEnd = prefix.endsWith('(')
+      ? findClosingParen(virtualText, start + prefix.length)
+      : identifier.generatedEnd;
+    if (end > wrapperEnd) {
+      return start + prefix.length;
+    }
+  }
+  return start;
+}
+
+/** The offset after the `)` closing the call whose arguments start at `offset`. */
+function findClosingParen(text: string, offset: number) {
+  let depth = 1;
+  for (let i = offset; i < text.length; i++) {
+    if (text[i] === '(') {
+      depth++;
+    } else if (text[i] === ')' && --depth === 0) {
+      return i + 1;
+    }
+  }
+  return text.length;
 }
 
 /**

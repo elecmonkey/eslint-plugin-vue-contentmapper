@@ -18,6 +18,9 @@ importers:
       '@vue/content-mapper':
         specifier: link:./vue-language-tools/packages/content-mapper
         version: link:vue-language-tools/packages/content-mapper
+      '@vue/language-core':
+        specifier: link:./vue-language-tools/packages/language-core
+        version: link:vue-language-tools/packages/language-core
       eslint:
         specifier: 10.13.0
         version: 10.13.0(jiti@2.7.0)

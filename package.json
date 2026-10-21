@@ -30,6 +30,7 @@
   "devDependencies": {
     "@types/node": "26.6.5",
     "@vue/content-mapper": "link:./vue-language-tools/packages/content-mapper",
+    "@vue/language-core": "link:./vue-language-tools/packages/language-core",
     "eslint": "10.13.0",
     "rstack": "0.8.5",
     "typescript": "6.0.3",

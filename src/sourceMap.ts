@@ -44,7 +44,7 @@ export class LineIndex {
   }
 }
 
-interface Mapping {
+export interface Mapping {
   generatedStart: number;
   generatedEnd: number;
   originalStart: number;
@@ -125,6 +125,11 @@ export class SourceMap {
     }
     const delta = mapping.originalStart - mapping.generatedStart;
     return [start + delta, end + delta];
+  }
+
+  /** The mapping whose generated span contains `offset`, if any. */
+  mappingAt(offset: number): Mapping | undefined {
+    return this.#findContaining(offset);
   }
 
   #findContaining(offset: number) {

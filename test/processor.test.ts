@@ -61,6 +61,55 @@ test('drops reports that start in generated code', async () => {
   expect(result.messages).toEqual([]);
 });
 
+test('maps reports that start on a generated identifier prefix', async () => {
+  // Props are read as `__VLS_ctx.b`, plain reads of setup bindings as `__VLS_unwrap(a, …)`, and
+  // unknown names as `__VLS_ctx.value`.
+  const code = `<script setup lang="ts">
+let a = 1;
+defineProps<{ b: number }>();
+</script>
+
+<template>
+	<div :class="b !== 2 ? 'x' : 'y'">{{ a + 1 }}{{ value() }}</div>
+</template>
+`;
+  const result = await lint(code, {
+    'no-negated-condition': 'error',
+    'no-restricted-syntax': [
+      'error',
+      'BinaryExpression[operator="+"]',
+      'CallExpression',
+    ],
+  });
+  // The generated `__VLS_unwrap(a, …)` call itself is not reported; `defineProps()` is user code.
+  expect(positions(result)).toEqual([
+    'no-restricted-syntax 3:1-3:29',
+    'no-negated-condition 7:15-7:34',
+    'no-restricted-syntax 7:39-7:44',
+    'no-restricted-syntax 7:50-7:57',
+  ]);
+});
+
+test('drops reports on a generated identifier wrapper itself', async () => {
+  // `{{ value }}` is generated as `__VLS_ctx.value`, a member expression the user did not write.
+  const code = `<template>{{ value }}</template>\n`;
+  const result = await lint(code, {
+    'no-restricted-syntax': ['error', 'MemberExpression'],
+  });
+  expect(result.messages).toEqual([]);
+});
+
+test('keeps reports on user code spelling a generated prefix', async () => {
+  const code = `<template>
+	<div>{{ '__VLS_ctx.foo' }}</div>
+</template>
+`;
+  const result = await lint(code, {
+    'no-restricted-syntax': ['error', 'Literal'],
+  });
+  expect(positions(result)).toEqual(['no-restricted-syntax 2:10-2:25']);
+});
+
 test('deduplicates an original span that is generated more than once', async () => {
   const result = await lint(counter, {
     'no-restricted-syntax': ['error', 'Identifier[name="count"]'],
