@@ -99,6 +99,22 @@ test('drops reports on a generated identifier wrapper itself', async () => {
   expect(result.messages).toEqual([]);
 });
 
+test('drops reports on generated names mapped to user code', async () => {
+  // `__VLS_export` maps to the whole `<script setup>` content; its `no-unused-vars` report must
+  // not land on the script, while the unused import is still reported.
+  const code = `<script setup>
+import Foo from './Foo.vue';
+import Bar from './Bar.vue';
+</script>
+
+<template><Foo /></template>
+`;
+  const result = await lint(code, { 'no-unused-vars': 'error' });
+  expect(
+    result.messages.map((m) => `${m.line}:${m.column} ${m.message}`),
+  ).toEqual(["3:8 'Bar' is defined but never used."]);
+});
+
 test('keeps reports on user code spelling a generated prefix', async () => {
   const code = `<template>
 	<div>{{ '__VLS_ctx.foo' }}</div>

@@ -22,6 +22,9 @@ const identifierPrefixes = [
   `${names.unwrap}(`,
 ];
 
+/** Every name language-core generates, such as `__VLS_export`. */
+const generatedNames = new Set<string>(Object.values(names));
+
 let mapper: ContentMapper | undefined;
 const files = new Map<string, FileState>();
 
@@ -96,6 +99,9 @@ function mapMessage(
           message.endColumn ?? message.column,
         );
   const start = skipIdentifierPrefix(file, reportStart, end);
+  if (isOnGeneratedName(file, start)) {
+    return undefined;
+  }
   const range = sourceMap.toOriginalRange(start, end);
 
   if (!range) {
@@ -174,6 +180,25 @@ function skipIdentifierPrefix(
     }
   }
   return start;
+}
+
+/**
+ * Whether `offset` is in a generated name mapped as a whole to user code, e.g. `__VLS_export`,
+ * which maps to the entire `<script setup>` content for type diagnostics. A lint report there
+ * (`'__VLS_export' is assigned a value but never used`) is about the generated name.
+ */
+function isOnGeneratedName(
+  { virtualText, sourceMap }: FileState,
+  offset: number,
+) {
+  const mapping = sourceMap.mappingAt(offset);
+  return (
+    !!mapping &&
+    !mapping.verbatim &&
+    generatedNames.has(
+      virtualText.slice(mapping.generatedStart, mapping.generatedEnd),
+    )
+  );
 }
 
 /** The offset after the `)` closing the call whose arguments start at `offset`. */
