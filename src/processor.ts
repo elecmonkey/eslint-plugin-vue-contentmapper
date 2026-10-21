@@ -2,7 +2,7 @@ import { type ContentMapper, createContentMapper } from '@vue/content-mapper';
 import { names } from '@vue/language-core';
 import type { Linter, Rule } from 'eslint';
 import * as path from 'node:path';
-import { LineIndex, SourceMap } from './sourceMap';
+import { LineIndex, type Range, SourceMap } from './sourceMap';
 
 interface FileState {
   originalText: string;
@@ -22,6 +22,8 @@ const identifierPrefixes = [
   `${names.dollars}.`,
   `${names.unwrap}(`,
 ];
+
+const refValue = '.value';
 
 /** Every name language-core generates, such as `__VLS_export`. */
 const generatedNames = new Set<string>(Object.values(names));
@@ -122,7 +124,7 @@ function mapMessage(
   }
 
   const { fix, suggestions, ...rest } = message;
-  const cleanText = createTextCleaner(file, reportStart, end);
+  const cleanText = createTextCleaner(file, reportStart, end, range);
   const startPosition = originalLines.toPosition(range[0]);
   const mapped: Linter.LintMessage = {
     ...rest,
@@ -207,11 +209,19 @@ function skipIdentifierPrefix(file: FileState, start: number, end: number) {
 
 /**
  * Rules quote the code they report on, so messages on template expressions can read
- * ``Use `Boolean(__VLS_ctx.foo)` instead``. Replaces each identifier wrapper in the report's range
- * with the identifier, unless the original file contains the same text.
+ * ``Use `Boolean(__VLS_ctx.foo)` instead``. Replaces the generated code around each template
+ * identifier in the report's range with the identifier:
+ *
+ * - wrappers such as `__VLS_ctx.foo`, unless the original file contains the same text;
+ * - the `.value` read of a ref `foo`, unless the reported original code contains `foo.value`.
  */
-function createTextCleaner(file: FileState, start: number, end: number) {
-  const { virtualText, originalText } = file;
+function createTextCleaner(
+  file: FileState,
+  start: number,
+  end: number,
+  [originalStart, originalEnd]: Range,
+) {
+  const { virtualText, originalText, sourceMap } = file;
   const replacements = new Map<string, string>();
   for (const prefix of identifierPrefixes) {
     for (
@@ -230,6 +240,36 @@ function createTextCleaner(file: FileState, start: number, end: number) {
           virtualText.slice(wrapper.identifierStart, wrapper.identifierEnd),
         );
       }
+    }
+  }
+  // A ref `foo` is read as `foo.value`, where the `.` is unmapped and `value` is an Atom mapped to
+  // `foo` itself; a `.value` the user wrote is mapped verbatim instead.
+  const reportedText = originalText.slice(originalStart, originalEnd);
+  for (
+    let dot = virtualText.indexOf(refValue, start);
+    dot !== -1 && dot < end;
+    dot = virtualText.indexOf(refValue, dot + 1)
+  ) {
+    const value = sourceMap.mappingAt(dot + 1);
+    if (
+      sourceMap.mappingAt(dot) ||
+      !value ||
+      value.verbatim ||
+      value.generatedStart !== dot + 1 ||
+      value.generatedEnd !== dot + refValue.length
+    ) {
+      continue;
+    }
+    const identifier = originalText.slice(
+      value.originalStart,
+      value.originalEnd,
+    );
+    const generated = identifier + refValue;
+    if (
+      virtualText.endsWith(identifier, dot) &&
+      !reportedText.includes(generated)
+    ) {
+      replacements.set(generated, identifier);
     }
   }
   return (text: string) => {

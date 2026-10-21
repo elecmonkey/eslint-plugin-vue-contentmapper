@@ -131,6 +131,31 @@ let a = 1;
   ]);
 });
 
+test('removes the generated .value of refs from messages', async () => {
+  // `a` is read as `a.value`; the `a.value` written in the script does not block the cleanup.
+  const code = `<script setup lang="ts">
+import { ref } from 'vue';
+const a = ref(0);
+a.value++;
+</script>
+
+<template>{{ !!a }}</template>
+`;
+  const result = await lint(code, { 'no-implicit-coercion': 'error' });
+  expect(result.messages.map((m) => m.message)).toEqual([
+    'Unexpected implicit coercion encountered. Use `Boolean(a)` instead.',
+  ]);
+});
+
+test('keeps a .value that the user wrote in messages', async () => {
+  // `foo.value` is read as `__VLS_ctx.foo.value`, where `.value` is mapped verbatim.
+  const code = `<template>{{ !!foo.value }}</template>\n`;
+  const result = await lint(code, { 'no-implicit-coercion': 'error' });
+  expect(result.messages.map((m) => m.message)).toEqual([
+    'Unexpected implicit coercion encountered. Use `Boolean(foo.value)` instead.',
+  ]);
+});
+
 test('keeps message text that the user wrote', async () => {
   const code = `<script setup lang="ts">
 const s = '__VLS_ctx.foo';
