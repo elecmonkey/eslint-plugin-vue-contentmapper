@@ -1,5 +1,6 @@
 import tsParser from '@typescript-eslint/parser';
 import type { ESLint, Linter } from 'eslint';
+import vue from 'eslint-plugin-vue';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
@@ -43,9 +44,10 @@ function withoutCoveredRules(
 
 /** eslint-plugin-vue's `flat/recommended`, scoped to the original SFC block. */
 function createVueConfigs(): Linter.Config[] {
-  const vue = require('eslint-plugin-vue') as Plugin;
   const isCovered = (name: string) => {
-    const meta = vue.rules?.[name.slice('vue/'.length)]?.meta as
+    const meta = (vue.rules as ESLint.Plugin['rules'])?.[
+      name.slice('vue/'.length)
+    ]?.meta as
       { type?: string; docs?: { extensionSource?: unknown } } | undefined;
     return (
       coveredRules.has(name) ||
@@ -56,7 +58,7 @@ function createVueConfigs(): Linter.Config[] {
     );
   };
   return [
-    ...vue.configs['flat/recommended']!.map(
+    ...(vue.configs['flat/recommended'] as Linter.Config[]).map(
       ({ processor: _processor, ...config }) =>
         withoutCoveredRules({ files: ['**/*.vue'], ...config }, isCovered),
     ),
@@ -129,10 +131,8 @@ plugin.configs = {
       },
     },
   ],
-  // Peer dependencies are loaded only when their config is used.
-  get vue() {
-    return createVueConfigs();
-  },
+  vue: createVueConfigs(),
+  // An optional peer dependency, loaded only when its config is used.
   get vize() {
     return createVizeConfigs();
   },
