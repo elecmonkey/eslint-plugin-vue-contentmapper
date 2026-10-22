@@ -1,11 +1,13 @@
 # eslint-plugin-vue-contentmapper
 
 > [!NOTE]
-> This plugin provides no `vue/*` rules. It runs ESLint core and typescript-eslint rules on Vue SFCs.
+> This plugin runs ESLint core and typescript-eslint rules on Vue SFCs. `vue/*` rules come from [eslint-plugin-vue](https://eslint.vuejs.org), or optionally from [Vize](https://github.com/ubugeeei-prod/vize).
 
 PoC: lint `.vue` files through the TypeScript that `@vue/content-mapper` ([vuejs/language-tools#6170](https://github.com/vuejs/language-tools/pull/6170)) generates for them.
 
 Each `.vue` file is transformed into virtual TypeScript and linted as is. Reports are mapped back to the original file through the content mapper's span mappings; reports that cannot be mapped back, i.e. those on generated code, are dropped.
+
+The original SFC is linted as a second block by eslint-plugin-vue (`configs.vue`) or Vize (`configs.vize`). Their rules that the virtual code already covers, such as `vue/no-unused-vars` and extensions of core rules other than layout ones, are turned off. Core and typescript-eslint rules belong on the virtual code blocks, `**/*.vue/*.{js,jsx,ts,tsx}`, not on `**/*.vue`.
 
 ![ESLint reports from example/App.vue shown in the editor, in both script and template](docs/example.webp)
 
