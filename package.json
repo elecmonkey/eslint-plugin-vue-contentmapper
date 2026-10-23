@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "description": "[PoC] Lint Vue SFCs directly with ESLint and typescript-eslint rules through contentmapper, beside eslint-plugin-vue",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elecmonkey/eslint-plugin-vue-contentmapper.git"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -52,5 +56,6 @@
     "oxlint-plugin-vize": {
       "optional": true
     }
-  }
+  },
+  "packageManager": "pnpm@12.14.0"
 }

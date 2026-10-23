@@ -1,0 +1,191 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      id-token: write
+
+    steps:
+      - name: Resolve release PR
+        id: pr
+        uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ inputs.pr }}
+        with:
+          script: |
+            const number = process.env.PR_NUMBER;
+            if (!/^[1-9]\d*$/.test(number)) {
+              throw new Error('Enter a valid PR number.');
+            }
+            const { data: pr } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: Number(number),
+            });
+            if (pr.state !== 'open' || pr.draft || pr.base.ref !== 'main'
+              || pr.head.repo?.full_name !== process.env.GITHUB_REPOSITORY) {
+              throw new Error('Release from an open, non-draft PR in this repository targeting main.');
+            }
+            core.setOutput('sha', pr.head.sha);
+
+      - name: Checkout release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+          persist-credentials: false
+
+      # Only the content mapper is bundled; eslint-plugin-vue is for the corpus scripts.
+      - name: Checkout vue-language-tools
+        run: git submodule update --init --depth 1 vue-language-tools
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Validate versions and choose npm dist-tag
+        id: version
+        env:
+          RELEASE_SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+
+          const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
+          const version = manifest.version;
+          const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$/.exec(version);
+          if (!match) {
+            throw new Error(`${version} is not a valid release version.`);
+          }
+          if (manifest.private) {
+            throw new Error('package.json is private.');
+          }
+          const result = spawnSync('npm', ['view', `${manifest.name}@${version}`, '--json'], {
+            encoding: 'utf8',
+          });
+          if (result.status !== 0) {
+            const response = JSON.parse(result.stdout || '{}');
+            if (response.error?.code !== 'E404') {
+              throw new Error(result.stderr || `Cannot query ${manifest.name}.`);
+            }
+          } else if (JSON.parse(result.stdout).gitHead !== process.env.RELEASE_SHA) {
+            throw new Error(`${manifest.name}@${version} was already published from another commit.`);
+          }
+          const prerelease = match[4];
+          const distTag = !prerelease ? 'latest'
+            : prerelease.split('.')[0] === 'alpha' ? 'alpha'
+            : prerelease.split('.')[0] === 'beta' ? 'beta'
+            : prerelease.split('.')[0] === 'rc' ? 'rc'
+            : 'next';
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\ndist-tag=${distTag}\n`);
+          JS
+
+      - name: Check release tag
+        uses: actions/github-script@v9
+        env:
+          RELEASE_SHA: ${{ steps.pr.outputs.sha }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        with:
+          script: |
+            const ref = `tags/v${process.env.RELEASE_VERSION}`;
+            try {
+              const existing = await github.rest.git.getRef({ ...context.repo, ref });
+              if (existing.data.object.type !== 'commit'
+                || existing.data.object.sha !== process.env.RELEASE_SHA) {
+                throw new Error(`${ref} already points to another commit.`);
+              }
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Check
+        run: pnpm check
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish to npm
+        env:
+          NPM_DIST_TAG: ${{ steps.version.outputs.dist-tag }}
+        run: pnpm publish --access public --provenance --no-git-checks --tag "$NPM_DIST_TAG"
+
+      - name: Tag published commit
+        uses: actions/github-script@v9
+        env:
+          RELEASE_SHA: ${{ steps.pr.outputs.sha }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        with:
+          script: |
+            const ref = `tags/v${process.env.RELEASE_VERSION}`;
+            const sha = process.env.RELEASE_SHA;
+            try {
+              await github.rest.git.createRef({
+                ...context.repo,
+                ref: `refs/${ref}`,
+                sha,
+              });
+              core.info(`Created ${ref} at ${sha}.`);
+            } catch (error) {
+              if (error.status !== 422) throw error;
+              const existing = await github.rest.git.getRef({ ...context.repo, ref });
+              if (existing.data.object.type !== 'commit' || existing.data.object.sha !== sha) {
+                throw new Error(`${ref} already points to another commit.`);
+              }
+              core.info(`${ref} already exists at ${sha}.`);
+            }
+
+      - name: Create GitHub Release
+        uses: actions/github-script@v9
+        env:
+          RELEASE_SHA: ${{ steps.pr.outputs.sha }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        with:
+          script: |
+            const version = process.env.RELEASE_VERSION;
+            const tag = `v${version}`;
+            try {
+              await github.rest.repos.getReleaseByTag({ ...context.repo, tag });
+              core.info(`Release ${tag} already exists.`);
+              return;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const { data: release } = await github.rest.repos.createRelease({
+              ...context.repo,
+              tag_name: tag,
+              target_commitish: process.env.RELEASE_SHA,
+              name: tag,
+              draft: false,
+              prerelease: version.includes('-'),
+            });
+            core.info(`Created ${release.html_url}.`);
