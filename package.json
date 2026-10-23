@@ -26,8 +26,8 @@
     "corpus:diff": "rs lib && node scripts/corpus/diff.ts",
     "corpus:scan": "rs lib && node scripts/corpus/scan.ts",
     "corpus:setup": "cd eslint-plugin-vue && npm install",
-    "postinstall": "cd vue-language-tools && corepack pnpm install --frozen-lockfile",
     "lint:example": "eslint --config example/eslint.config.js example",
+    "prepare": "cd vue-language-tools && corepack pnpm install --frozen-lockfile",
     "test": "rs test"
   },
   "dependencies": {
