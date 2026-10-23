@@ -1,6 +1,6 @@
 {
   "name": "eslint-plugin-vue-contentmapper",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "[PoC] Lint Vue SFCs directly with ESLint and typescript-eslint rules through contentmapper, beside eslint-plugin-vue",
   "repository": {
     "type": "git",
