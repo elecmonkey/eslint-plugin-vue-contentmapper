@@ -65,3 +65,24 @@ const list = [1, 2];
   expect(rules).not.toContain('vue/no-unused-vars');
   expect(rules).not.toContain('vue/comment-directive');
 });
+
+test('turns off layout rules and picks the preset through options', () => {
+  const rulesOf = (configs: Linter.Config[]) =>
+    configs.flatMap((config) => Object.keys(config.rules ?? {}));
+  const isLayout = (rule: string) =>
+    vueContentMapper.pluginVue.rules[rule.slice('vue/'.length)]?.meta?.type ===
+    'layout';
+
+  expect(rulesOf(vueContentMapper.vue())).toEqual(
+    rulesOf(vueContentMapper.configs.vue),
+  );
+  expect(rulesOf(vueContentMapper.vue()).some(isLayout)).toBe(true);
+
+  const withoutLayout = rulesOf(vueContentMapper.vue({ layout: false }));
+  expect(withoutLayout.some(isLayout)).toBe(false);
+  expect(withoutLayout).toContain('vue/attributes-order');
+
+  const essential = rulesOf(vueContentMapper.vue({ preset: 'essential' }));
+  expect(essential).toContain('vue/require-v-for-key');
+  expect(essential).not.toContain('vue/attributes-order');
+});

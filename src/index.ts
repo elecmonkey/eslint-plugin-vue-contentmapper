@@ -42,8 +42,25 @@ function withoutCoveredRules(
   };
 }
 
-/** eslint-plugin-vue's `flat/recommended`, scoped to the original SFC block. */
-function createVueConfigs(): Linter.Config[] {
+export interface VueOptions {
+  /** The eslint-plugin-vue preset. Defaults to `'recommended'`. */
+  preset?: 'essential' | 'strongly-recommended' | 'recommended';
+  /** Whether layout rules are on. Turn them off when a formatter such as oxfmt or Prettier formats `.vue` files. Defaults to `true`. */
+  layout?: boolean;
+}
+
+export interface VizeOptions {
+  /** Defaults to `'incremental'`. */
+  preset?: string;
+  /** Defaults to `'none'`. */
+  helpLevel?: 'full' | 'short' | 'none';
+}
+
+/** An eslint-plugin-vue preset, scoped to the original SFC block. */
+function createVueConfigs({
+  preset = 'recommended',
+  layout = true,
+}: VueOptions = {}): Linter.Config[] {
   const isCovered = (name: string) => {
     const meta = (vue.rules as ESLint.Plugin['rules'])?.[
       name.slice('vue/'.length)
@@ -54,11 +71,12 @@ function createVueConfigs(): Linter.Config[] {
       // It only works with eslint-plugin-vue's processor, which this plugin replaces.
       name === 'vue/comment-directive' ||
       // Extensions of core rules, except layout ones the virtual code cannot check.
-      (meta?.docs?.extensionSource !== undefined && meta.type !== 'layout')
+      (meta?.docs?.extensionSource !== undefined && meta.type !== 'layout') ||
+      (!layout && meta?.type === 'layout')
     );
   };
   return [
-    ...(vue.configs['flat/recommended'] as Linter.Config[]).map(
+    ...(vue.configs[`flat/${preset}`] as Linter.Config[]).map(
       ({ processor: _processor, ...config }) =>
         withoutCoveredRules({ files: ['**/*.vue'], ...config }, isCovered),
     ),
@@ -85,7 +103,10 @@ function resolveImportEntry(name: string, entry: string) {
   throw new Error(`Cannot find package '${name}'`);
 }
 
-function createVizeConfigs(): Linter.Config[] {
+function createVizeConfigs({
+  preset = 'incremental',
+  helpLevel = 'none',
+}: VizeOptions = {}): Linter.Config[] {
   const { default: vize, configs } = require(
     resolveImportEntry('oxlint-plugin-vize', './eslint'),
   ) as typeof import('oxlint-plugin-vize/eslint');
@@ -94,7 +115,7 @@ function createVizeConfigs(): Linter.Config[] {
       {
         files: ['**/*.vue'],
         plugins: { vize: vize as unknown as ESLint.Plugin },
-        settings: { vize: { preset: 'incremental', helpLevel: 'none' } },
+        settings: { vize: { preset, helpLevel } },
         rules: configs.recommended,
       },
       (rule) => coveredRules.has(rule),
@@ -138,10 +159,26 @@ plugin.configs = {
   },
 };
 
-export default plugin as Plugin & {
+const pluginVue: ESLint.Plugin & {
+  rules: NonNullable<ESLint.Plugin['rules']>;
+} = vue;
+
+const vueContentMapper: Plugin & {
   configs: {
     base: Linter.Config[];
     vue: Linter.Config[];
     vize: Linter.Config[];
   };
-};
+  /** The eslint-plugin-vue that `vue()` and `configs.vue` use, for configuring its rules. */
+  pluginVue: typeof pluginVue;
+  /** eslint-plugin-vue configs with options. `configs.vue` is `vue()`. */
+  vue: typeof createVueConfigs;
+  /** Vize configs with options. `configs.vize` is `vize()`. Needs the optional peer `oxlint-plugin-vize`. */
+  vize: typeof createVizeConfigs;
+} = Object.assign(plugin as typeof vueContentMapper, {
+  pluginVue,
+  vue: createVueConfigs,
+  vize: createVizeConfigs,
+});
+
+export default vueContentMapper;
